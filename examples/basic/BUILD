@@ -29,3 +29,15 @@ csharp_library(
     srcs = ["lib.cs"],
     target_frameworks = ["netcoreapp3.0"],
 )
+
+cc_binary(
+    name = "omg",
+    srcs = ["main.cc"],
+    data = [
+        ":hello",
+        "@netcore-sdk-linux//:dotnet",
+    ],
+    deps = [
+        "@bazel_tools//tools/cpp/runfiles",
+    ],
+)

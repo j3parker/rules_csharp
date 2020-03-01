@@ -21,17 +21,29 @@ std::string evprintf(std::string name, std::string path) {
   return ss.str();
 }
 
+// Bazel template strings. Optional args may == "".
+// kDotnetExe: path to dotnet.exe
+// kArgv1: (optional) first arg to dotnet.exe
+// kArgv2: (optional) second arg to dotnet.exe
+constexpr const char* kDotnetExe = "{DotnetExe}";
+constexpr const char* kArgv1 = "{Argv1}";
+constexpr const char* kArgv2 = "{Argv2}";
+
+static_assert(
+  !(kArgv1[0] == '\0' && kArgv2[0] != '\0'),
+  "kArgv2 can only  be specified if kArgv1 is too"
+);
+
 int main(int argc, char** argv) {
   std::string error;
 
   auto runfiles = Runfiles::Create(argv[0], &error);
-
   if (runfiles == nullptr) {
     std::cerr << "Couldn't load runfiles: " << error << std::endl;
     return 101;
   }
 
-  auto dotnet = runfiles->Rlocation("{DotnetExe}");
+  auto dotnet = runfiles->Rlocation(kDotnetExe);
   if (dotnet.empty()) {
     std::cerr << "Couldn't find the .NET runtime" << std::endl;
     return 404;
@@ -50,14 +62,34 @@ int main(int argc, char** argv) {
       evprintf("DOTNET_CLI_TELEMETRY_OPTOUT", "1"),  // disable telemetry
   };
 
+  auto extra_count =
+    !!(strlen(kArgv1) != 0) +
+    !!(strlen(kArgv2) != 0);
+
+  auto dotnet_argv = new char*[argc + extra_count + 1];
+
   // dotnet wants this to either be dotnet or dotnet.exe but doesn't have a
   // preference otherwise.
-  auto dotnet_argv = new char*[argc + 1];
   dotnet_argv[0] = (char*)"dotnet";
-  for (int i = 1; i < argc; i++) {
-    dotnet_argv[i] = argv[i];
+
+  // Make sure to hold a reference to these std::string.
+  auto argv1 = runfiles->Rlocation(kArgv1);
+  auto argv2 = runfiles->Rlocation(kArgv2);
+
+  if (strlen(kArgv1) != 0) {
+    dotnet_argv[1] = (char*)argv1.c_str();
   }
-  dotnet_argv[argc] = nullptr;
+
+  if (strlen(kArgv2) != 0) {
+    dotnet_argv[2] = (char*)argv2.c_str();
+  }
+
+  // Copy the rest of our arguments in
+  for (int i = 1; i < argc; i++) {
+    dotnet_argv[i + extra_count] = argv[i];
+  }
+
+  dotnet_argv[argc + 1] = nullptr;
 
 #ifdef _WIN32
   // _spawnve has a limit on the size of the environment variables
